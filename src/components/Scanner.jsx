@@ -46,6 +46,13 @@ export default function Scanner() {
     }
   };
 
+  // ✅ Handle Cancel
+  const cancelScanning = () => {
+    setScanning(false);
+    setScanStartTime(null);
+    setScanTime(null);
+  };
+
   const isMatch = text && scannedData && text === scannedData;
 
   return (
@@ -95,29 +102,40 @@ export default function Scanner() {
               Start Scan
             </button>
           ) : (
-            <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
-              <BarcodeScannerComponent
-                width="100%"
-                height="100%"
-                onUpdate={(err, result) => {
-                  if (result) handleScanComplete(result.text);
-                }}
-              />
+            <div className="flex flex-col items-center space-y-4 w-full">
+              {/* Scanner Box */}
+              <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
+                <BarcodeScannerComponent
+                  width="100%"
+                  height="100%"
+                  onUpdate={(err, result) => {
+                    if (result) handleScanComplete(result.text);
+                  }}
+                />
 
-              {/* Soft glowing border */}
-              <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
+                {/* Soft glowing border */}
+                <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
 
-              {/* Animated scanning line */}
-              <motion.div
-                className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent"
-                initial={{ top: 0 }}
-                animate={{ top: "100%" }}
-                transition={{
-                  duration: 2,
-                  repeat: Infinity,
-                  repeatType: "reverse",
-                }}
-              />
+                {/* Animated scanning line */}
+                <motion.div
+                  className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent"
+                  initial={{ top: 0 }}
+                  animate={{ top: "100%" }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity,
+                    repeatType: "reverse",
+                  }}
+                />
+              </div>
+
+              {/* Cancel Button */}
+              <button
+                onClick={cancelScanning}
+                className="px-6 py-2 rounded-xl bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800 font-semibold shadow-md hover:scale-105 transform transition"
+              >
+                Cancel Scan
+              </button>
             </div>
           )}
         </div>
