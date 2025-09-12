@@ -4,23 +4,22 @@ import BarcodeScannerComponent from "react-qr-barcode-scanner";
 import { motion } from "framer-motion";
 
 export default function Scanner() {
-  // QR generator & results
   const [text, setText] = useState("");
   const [scannedData, setScannedData] = useState("");
   const [scanStartTime, setScanStartTime] = useState(null);
   const [scanTime, setScanTime] = useState(null);
 
-  // Zebra scanner (keyboard wedge)
   const [buffer, setBuffer] = useState("");
   const inputRef = useRef(null);
 
-  // Cameras
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [enumerating, setEnumerating] = useState(false);
 
-  // ✅ Zebra scanner handler
+  // 🔹 Force scanner re-init on device change
+  const [scannerKey, setScannerKey] = useState(0);
+
   useEffect(() => {
     const onKey = (e) => {
       if (document.activeElement === inputRef.current) return;
@@ -41,7 +40,6 @@ export default function Scanner() {
     return () => window.removeEventListener("keydown", onKey);
   }, [buffer, scanStartTime]);
 
-  // ✅ Get camera permission
   const ensureCameraPermission = async () => {
     let stream;
     try {
@@ -53,15 +51,15 @@ export default function Scanner() {
     }
   };
 
-  // ✅ Enumerate devices
   const enumerateVideoDevices = async () => {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     setEnumerating(true);
     try {
-      await ensureCameraPermission(); // Ensure permissions before enumerating
+      await ensureCameraPermission();
       const all = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = all.filter((d) => d.kind === "videoinput");
       setDevices(videoInputs);
+
       if (!selectedDeviceId && videoInputs.length) {
         setSelectedDeviceId(videoInputs[0].deviceId);
       } else if (
@@ -75,7 +73,6 @@ export default function Scanner() {
     }
   };
 
-  // ✅ On mount: request permission & enumerate
   useEffect(() => {
     (async () => {
       await ensureCameraPermission();
@@ -87,18 +84,13 @@ export default function Scanner() {
       navigator.mediaDevices?.removeEventListener("devicechange", onDeviceChange);
   }, []);
 
-  // ⭐ FIX: Restart scanner when camera device changes
+  // 🔹 Restart scanner when camera changes
   useEffect(() => {
     if (scanning) {
-      setScanning(false);
-      const timer = setTimeout(() => {
-        setScanning(true);
-      }, 100);
-      return () => clearTimeout(timer);
+      setScannerKey((k) => k + 1); // force re-mount
     }
   }, [selectedDeviceId]);
 
-  // ✅ Start / Cancel scanning
   const startScanning = async () => {
     await ensureCameraPermission();
     await enumerateVideoDevices();
@@ -113,7 +105,6 @@ export default function Scanner() {
     setScanTime(null);
   };
 
-  // ✅ Scan complete
   const handleScanComplete = (data) => {
     if (!data) return;
     setScannedData(data);
@@ -133,7 +124,7 @@ export default function Scanner() {
         animate={{ y: 0, opacity: 1 }}
       >
         <p className="md:col-span-2 text-center text-xs text-gray-400">
-          version 1.0.1
+          version 1.0.2
         </p>
 
         {/* LEFT: QR Generator */}
@@ -165,7 +156,6 @@ export default function Scanner() {
           <h1 className="text-2xl md:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-rose-600 to-orange-600">
             Scan QR
           </h1>
-          {/* Device selector */}
           <div className="flex w-full gap-3">
             <select
               value={selectedDeviceId || ""}
@@ -192,7 +182,6 @@ export default function Scanner() {
             </button>
           </div>
 
-          {/* Scanner */}
           {!scanning ? (
             <button
               onClick={startScanning}
@@ -204,14 +193,12 @@ export default function Scanner() {
             <div className="flex flex-col items-center space-y-4 w-full">
               <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
                 <BarcodeScannerComponent
-                  key={selectedDeviceId}
+                  key={scannerKey} // 🔑 force full re-mount on change
                   width="100%"
                   height="100%"
                   constraints={{
                     audio: false,
-                    video: {
-                      deviceId: { exact: selectedDeviceId },
-                    },
+                    video: { deviceId: { exact: selectedDeviceId } },
                   }}
                   onUpdate={(err, result) => {
                     if (result?.text) handleScanComplete(result.text);
