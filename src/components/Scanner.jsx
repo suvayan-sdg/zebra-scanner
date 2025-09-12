@@ -191,9 +191,10 @@ export default function Scanner() {
                   width="100%"
                   height="100%"
                   constraints={{
-                    deviceId: selectedDeviceId
-                      ? { exact: selectedDeviceId }
-                      : undefined,
+                    audio: false,
+                    video: {
+                      deviceId: { exact: selectedDeviceId },
+                    },
                   }}
                   onUpdate={(err, result) => {
                     if (result?.text) handleScanComplete(result.text);
