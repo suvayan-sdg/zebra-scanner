@@ -10,6 +10,8 @@ export default function Scanner() {
   const [scanning, setScanning] = useState(false);
   const [scanTime, setScanTime] = useState(null);
   const [scanStartTime, setScanStartTime] = useState(null);
+  const [devices, setDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const inputRef = useRef(null);
 
   // ✅ Capture Zebra Scanner (keyboard wedge mode)
@@ -28,6 +30,25 @@ export default function Scanner() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [buffer]);
+
+  // ✅ Enumerate available video devices
+  useEffect(() => {
+    async function getDevices() {
+      try {
+        const allDevices = await navigator.mediaDevices.enumerateDevices();
+        const videoDevices = allDevices.filter(
+          (device) => device.kind === "videoinput"
+        );
+        setDevices(videoDevices);
+        if (videoDevices.length > 0 && !selectedDeviceId) {
+          setSelectedDeviceId(videoDevices[0].deviceId); // default first camera
+        }
+      } catch (err) {
+        console.error("Error fetching devices", err);
+      }
+    }
+    getDevices();
+  }, [selectedDeviceId]);
 
   // ✅ Handle Scan Start
   const startScanning = () => {
@@ -89,10 +110,25 @@ export default function Scanner() {
         </div>
 
         {/* Right Column → Live Scanner */}
-        <div className="flex flex-col items-center space-y-6">
+        <div className="flex flex-col items-center space-y-6 w-full">
           <h1 className="text-2xl md:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-rose-600 to-orange-600">
             Scan QR
           </h1>
+
+          {/* Device Selector */}
+          {devices.length > 0 && (
+            <select
+              value={selectedDeviceId || ""}
+              onChange={(e) => setSelectedDeviceId(e.target.value)}
+              className="w-full px-4 py-2 rounded-xl border-2 border-amber-300 bg-white text-gray-700 shadow-sm hover:shadow-md focus:ring-2 focus:ring-orange-400 outline-none"
+            >
+              {devices.map((device, idx) => (
+                <option key={idx} value={device.deviceId}>
+                  {device.label || `Camera ${idx + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
 
           {!scanning ? (
             <button
@@ -108,6 +144,8 @@ export default function Scanner() {
                 <BarcodeScannerComponent
                   width="100%"
                   height="100%"
+                  facingMode="environment"
+                  constraints={{ deviceId: selectedDeviceId }}
                   onUpdate={(err, result) => {
                     if (result) handleScanComplete(result.text);
                   }}
