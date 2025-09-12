@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { QRCodeCanvas } from "qrcode.react";
-import BarcodeScannerComponent from "react-qr-barcode-scanner";
+import Webcam from "react-webcam";
+import jsQR from "jsqr";
 import { motion } from "framer-motion";
 
 export default function Scanner() {
@@ -9,109 +10,79 @@ export default function Scanner() {
   const [scanStartTime, setScanStartTime] = useState(null);
   const [scanTime, setScanTime] = useState(null);
 
-  const [buffer, setBuffer] = useState("");
-  const inputRef = useRef(null);
-
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [enumerating, setEnumerating] = useState(false);
 
-  // 🔹 Force scanner re-init on device change
-  const [scannerKey, setScannerKey] = useState(0);
+  const webcamRef = useRef(null);
+  const canvasRef = useRef(null);
 
-  useEffect(() => {
-    const onKey = (e) => {
-      if (document.activeElement === inputRef.current) return;
-      if (e.key === "Enter") {
-        if (buffer) {
-          setScannedData(buffer);
-          setBuffer("");
-          setScanning(false);
-          if (scanStartTime) {
-            setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
-          }
-        }
-      } else if (e.key.length === 1) {
-        setBuffer((prev) => prev + e.key);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [buffer, scanStartTime]);
-
-  const ensureCameraPermission = async () => {
-    let stream;
+  // ✅ Enumerate cameras
+  const enumerateDevices = async () => {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ video: true });
-    } catch (e) {
-      console.error("Camera permission error:", e);
-    } finally {
-      if (stream) stream.getTracks().forEach((t) => t.stop());
-    }
-  };
-
-  const enumerateVideoDevices = async () => {
-    if (!navigator.mediaDevices?.enumerateDevices) return;
-    setEnumerating(true);
-    try {
-      await ensureCameraPermission();
       const all = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = all.filter((d) => d.kind === "videoinput");
       setDevices(videoInputs);
-
       if (!selectedDeviceId && videoInputs.length) {
         setSelectedDeviceId(videoInputs[0].deviceId);
-      } else if (
-        selectedDeviceId &&
-        !videoInputs.find((d) => d.deviceId === selectedDeviceId)
-      ) {
-        setSelectedDeviceId(videoInputs[0]?.deviceId ?? null);
       }
-    } finally {
-      setEnumerating(false);
+    } catch (err) {
+      console.error("Device enumeration failed:", err);
     }
   };
 
   useEffect(() => {
-    (async () => {
-      await ensureCameraPermission();
-      await enumerateVideoDevices();
-    })();
-    const onDeviceChange = () => setTimeout(() => enumerateVideoDevices(), 300);
-    navigator.mediaDevices?.addEventListener("devicechange", onDeviceChange);
+    enumerateDevices();
+    navigator.mediaDevices.addEventListener("devicechange", enumerateDevices);
     return () =>
-      navigator.mediaDevices?.removeEventListener("devicechange", onDeviceChange);
+      navigator.mediaDevices.removeEventListener("devicechange", enumerateDevices);
   }, []);
 
-  // 🔹 Restart scanner when camera changes
-  useEffect(() => {
-    if (scanning) {
-      setScannerKey((k) => k + 1); // force re-mount
-    }
-  }, [selectedDeviceId]);
+  // ✅ Scan QR code from video frames
+  const captureFrame = useCallback(() => {
+    if (!webcamRef.current || !canvasRef.current) return;
 
-  const startScanning = async () => {
-    await ensureCameraPermission();
-    await enumerateVideoDevices();
+    const video = webcamRef.current.video;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+
+    if (!video || video.readyState !== 4) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const qrCode = jsQR(imageData.data, canvas.width, canvas.height);
+
+    if (qrCode?.data) {
+      setScannedData(qrCode.data);
+      setScanning(false);
+      if (scanStartTime) {
+        setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
+      }
+    }
+  }, [scanStartTime]);
+
+  useEffect(() => {
+    let interval;
+    if (scanning) {
+      interval = setInterval(captureFrame, 300);
+    }
+    return () => clearInterval(interval);
+  }, [scanning, captureFrame]);
+
+  const startScanning = () => {
     setScannedData("");
     setScanTime(null);
     setScanStartTime(Date.now());
     setScanning(true);
   };
+
   const cancelScanning = () => {
     setScanning(false);
     setScanStartTime(null);
     setScanTime(null);
-  };
-
-  const handleScanComplete = (data) => {
-    if (!data) return;
-    setScannedData(data);
-    setScanning(false);
-    if (scanStartTime) {
-      setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
-    }
   };
 
   const isMatch = text && scannedData && text === scannedData;
@@ -124,7 +95,7 @@ export default function Scanner() {
         animate={{ y: 0, opacity: 1 }}
       >
         <p className="md:col-span-2 text-center text-xs text-gray-400">
-          version 1.0.2
+          version 1.0.3
         </p>
 
         {/* LEFT: QR Generator */}
@@ -133,7 +104,6 @@ export default function Scanner() {
             Generate QR
           </h1>
           <input
-            ref={inputRef}
             type="text"
             placeholder="Enter text to generate QR"
             value={text}
@@ -173,13 +143,6 @@ export default function Scanner() {
                 ))
               )}
             </select>
-            <button
-              onClick={enumerateVideoDevices}
-              disabled={enumerating || scanning}
-              className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 text-white font-semibold shadow-md hover:shadow-lg disabled:opacity-60"
-            >
-              {enumerating ? "Refreshing…" : "Refresh"}
-            </button>
           </div>
 
           {!scanning ? (
@@ -192,29 +155,17 @@ export default function Scanner() {
           ) : (
             <div className="flex flex-col items-center space-y-4 w-full">
               <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
-                <BarcodeScannerComponent
-                  key={scannerKey} // 🔑 force full re-mount on change
-                  width="100%"
-                  height="100%"
-                  constraints={{
-                    audio: false,
-                    video: { deviceId: { exact: selectedDeviceId } },
+                <Webcam
+                  ref={webcamRef}
+                  audio={false}
+                  screenshotFormat="image/png"
+                  videoConstraints={{
+                    deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
                   }}
-                  onUpdate={(err, result) => {
-                    if (result?.text) handleScanComplete(result.text);
-                  }}
+                  className="w-full h-full object-cover"
                 />
+                <canvas ref={canvasRef} className="hidden" />
                 <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
-                <motion.div
-                  className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-rose-500 to-transparent"
-                  initial={{ top: 0 }}
-                  animate={{ top: "100%" }}
-                  transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    repeatType: "reverse",
-                  }}
-                />
               </div>
               <button
                 onClick={cancelScanning}
