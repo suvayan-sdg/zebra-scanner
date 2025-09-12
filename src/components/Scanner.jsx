@@ -120,6 +120,10 @@ export default function Scanner() {
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
       >
+        <p className="md:col-span-2 text-center text-xs text-gray-400">
+          version 1.0.0
+        </p>
+
         {/* LEFT: QR Generator */}
         <div className="flex flex-col items-center space-y-6">
           <h1 className="text-2xl md:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-orange-600 to-rose-600">
