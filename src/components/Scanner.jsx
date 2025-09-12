@@ -187,7 +187,7 @@ export default function Scanner() {
             <div className="flex flex-col items-center space-y-4 w-full">
               <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
                 <BarcodeScannerComponent
-                  key={selectedDeviceId || "default"} // 👈 force remount when device changes
+                  key={selectedDeviceId}
                   width="100%"
                   height="100%"
                   constraints={{
