@@ -58,6 +58,7 @@ export default function Scanner() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     setEnumerating(true);
     try {
+      await ensureCameraPermission(); // Ensure permissions before enumerating
       const all = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = all.filter((d) => d.kind === "videoinput");
       setDevices(videoInputs);
@@ -85,6 +86,17 @@ export default function Scanner() {
     return () =>
       navigator.mediaDevices?.removeEventListener("devicechange", onDeviceChange);
   }, []);
+
+  // ⭐ FIX: Restart scanner when camera device changes
+  useEffect(() => {
+    if (scanning) {
+      setScanning(false);
+      const timer = setTimeout(() => {
+        setScanning(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [selectedDeviceId]);
 
   // ✅ Start / Cancel scanning
   const startScanning = async () => {
@@ -121,7 +133,7 @@ export default function Scanner() {
         animate={{ y: 0, opacity: 1 }}
       >
         <p className="md:col-span-2 text-center text-xs text-gray-400">
-          version 1.0.0
+          version 1.0.1
         </p>
 
         {/* LEFT: QR Generator */}
@@ -159,6 +171,7 @@ export default function Scanner() {
               value={selectedDeviceId || ""}
               onChange={(e) => setSelectedDeviceId(e.target.value)}
               className="flex-1 px-4 py-2 rounded-xl border-2 border-amber-300 bg-white text-gray-700 shadow-sm hover:shadow-md focus:ring-2 focus:ring-orange-400 outline-none"
+              disabled={scanning}
             >
               {devices.length === 0 ? (
                 <option value="">No cameras detected</option>
@@ -172,7 +185,7 @@ export default function Scanner() {
             </select>
             <button
               onClick={enumerateVideoDevices}
-              disabled={enumerating}
+              disabled={enumerating || scanning}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-400 to-orange-400 text-white font-semibold shadow-md hover:shadow-lg disabled:opacity-60"
             >
               {enumerating ? "Refreshing…" : "Refresh"}
