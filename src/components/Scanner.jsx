@@ -19,7 +19,7 @@ export default function Scanner() {
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [scanning, setScanning] = useState(false);
-  const [scannerType, setScannerType] = useState(SCANNER_TYPES.WEBCAM); // New state to control scanner type
+  const [scannerType, setScannerType] = useState(SCANNER_TYPES.WEBCAM);
 
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
@@ -86,32 +86,32 @@ export default function Scanner() {
   useEffect(() => {
     if (scannerType === SCANNER_TYPES.KEYBOARD) {
       let buffer = '';
-      let lastKeyPressTime = Date.now();
-      const timeout = 100; // Timeout in ms to determine end of scan
-
       const handleKeyDown = (event) => {
-        // Prevent default behavior for Enter key in the input field
-        if (event.key === 'Enter' && event.target === inputRef.current) {
-          event.preventDefault();
-        }
-        
-        // This is a common way to handle scanner input, which is very fast
-        const now = Date.now();
-        if (now - lastKeyPressTime > timeout) {
-          // New scan sequence started
-          buffer = '';
+        // Only trigger the scanner listener when the input field is not focused
+        if (document.activeElement === inputRef.current || event.key.length !== 1) {
+            return;
         }
 
-        if (event.key === 'Enter') {
-          if (buffer.length > 0) {
-            setScannedData(buffer);
-            setScanTime(((now - scanStartTime) / 1000).toFixed(2));
-          }
-          buffer = ''; // Reset buffer after processing
-        } else if (event.key.length === 1) { // Filter out special keys like 'Shift', 'Alt', etc.
+        // If a scan is not in progress, start one on the first keypress
+        if (!scanning && event.key !== 'Enter') {
+          setScannedData("");
+          setScanTime(null);
+          setScanning(true);
+          setScanStartTime(Date.now());
+        }
+
+        // Add character to buffer
+        if (event.key.length === 1) {
           buffer += event.key;
         }
-        lastKeyPressTime = now;
+
+        // Check for scan completion
+        if (event.key === 'Enter') {
+          setScannedData(buffer);
+          setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
+          setScanning(false);
+          buffer = '';
+        }
       };
 
       window.addEventListener('keydown', handleKeyDown);
@@ -120,16 +120,13 @@ export default function Scanner() {
         window.removeEventListener('keydown', handleKeyDown);
       };
     }
-  }, [scannerType, scanStartTime]);
+  }, [scannerType, scanning, scanStartTime]);
 
-  const startScanning = () => {
+  const startWebcamScanning = () => {
     setScannedData("");
     setScanTime(null);
     setScanStartTime(Date.now());
     setScanning(true);
-    if (scannerType === SCANNER_TYPES.KEYBOARD && inputRef.current) {
-      inputRef.current.focus(); // Focus the hidden input to capture keystrokes
-    }
   };
 
   const cancelScanning = () => {
@@ -157,6 +154,7 @@ export default function Scanner() {
             Generate QR
           </h1>
           <input
+            ref={inputRef} // Used to check if the main input is focused
             type="text"
             placeholder="Enter text to generate QR"
             value={text}
@@ -211,24 +209,16 @@ export default function Scanner() {
             )}
           </div>
 
-          {/* This hidden input is for the keyboard scanner to ensure focus for keydown events */}
-          <input
-            ref={inputRef}
-            type="text"
-            className="w-0 h-0 opacity-0 absolute"
-            autoFocus={scanning && scannerType === SCANNER_TYPES.KEYBOARD}
-          />
-
-          {!scanning ? (
-            <button
-              onClick={startScanning}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg hover:scale-105 transform transition"
-            >
-              Start Scan
-            </button>
-          ) : (
-            <div className="flex flex-col items-center space-y-4 w-full">
-              {scannerType === SCANNER_TYPES.WEBCAM ? (
+          {scannerType === SCANNER_TYPES.WEBCAM ? (
+            !scanning ? (
+              <button
+                onClick={startWebcamScanning}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-rose-500 text-white font-semibold shadow-lg hover:scale-105 transform transition"
+              >
+                Start Scan
+              </button>
+            ) : (
+              <div className="flex flex-col items-center space-y-4 w-full">
                 <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
                   <Webcam
                     ref={webcamRef}
@@ -242,17 +232,17 @@ export default function Scanner() {
                   <canvas ref={canvasRef} className="hidden" />
                   <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
                 </div>
-              ) : (
-                <div className="w-full h-80 rounded-xl bg-gray-100 flex items-center justify-center shadow-inner text-gray-500 italic">
-                  Waiting for keyboard scanner input...
-                </div>
-              )}
-              <button
-                onClick={cancelScanning}
-                className="px-6 py-2 rounded-xl bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800 font-semibold shadow-md hover:scale-105 transform transition"
-              >
-                Cancel Scan
-              </button>
+                <button
+                  onClick={cancelScanning}
+                  className="px-6 py-2 rounded-xl bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800 font-semibold shadow-md hover:scale-105 transform transition"
+                >
+                  Cancel Scan
+                </button>
+              </div>
+            )
+          ) : (
+            <div className="w-full h-80 rounded-xl bg-gray-100 flex items-center justify-center shadow-inner text-gray-500 italic">
+              {scanning ? "Scanning..." : "Waiting for first keystroke to start scan..."}
             </div>
           )}
         </div>
