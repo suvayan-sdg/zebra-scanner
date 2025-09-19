@@ -4,6 +4,12 @@ import Webcam from "react-webcam";
 import jsQR from "jsqr";
 import { motion } from "framer-motion";
 
+// Define scanner types for a clear switch
+const SCANNER_TYPES = {
+  WEBCAM: "webcam",
+  KEYBOARD: "keyboard",
+};
+
 export default function Scanner() {
   const [text, setText] = useState("");
   const [scannedData, setScannedData] = useState("");
@@ -13,11 +19,13 @@ export default function Scanner() {
   const [devices, setDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState(null);
   const [scanning, setScanning] = useState(false);
+  const [scannerType, setScannerType] = useState(SCANNER_TYPES.WEBCAM); // New state to control scanner type
 
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
+  const inputRef = useRef(null);
 
-  // ✅ Enumerate cameras
+  // ✅ Enumerate cameras for webcam mode
   const enumerateDevices = async () => {
     try {
       const all = await navigator.mediaDevices.enumerateDevices();
@@ -32,13 +40,15 @@ export default function Scanner() {
   };
 
   useEffect(() => {
-    enumerateDevices();
-    navigator.mediaDevices.addEventListener("devicechange", enumerateDevices);
-    return () =>
-      navigator.mediaDevices.removeEventListener("devicechange", enumerateDevices);
-  }, []);
+    if (scannerType === SCANNER_TYPES.WEBCAM) {
+      enumerateDevices();
+      navigator.mediaDevices.addEventListener("devicechange", enumerateDevices);
+      return () =>
+        navigator.mediaDevices.removeEventListener("devicechange", enumerateDevices);
+    }
+  }, [scannerType, selectedDeviceId]);
 
-  // ✅ Scan QR code from video frames
+  // ✅ Scan QR code from video frames (Webcam logic)
   const captureFrame = useCallback(() => {
     if (!webcamRef.current || !canvasRef.current) return;
 
@@ -66,17 +76,60 @@ export default function Scanner() {
 
   useEffect(() => {
     let interval;
-    if (scanning) {
+    if (scanning && scannerType === SCANNER_TYPES.WEBCAM) {
       interval = setInterval(captureFrame, 300);
     }
     return () => clearInterval(interval);
-  }, [scanning, captureFrame]);
+  }, [scanning, captureFrame, scannerType]);
+
+  // ✅ Handle keyboard input (Zebra scanner logic)
+  useEffect(() => {
+    if (scannerType === SCANNER_TYPES.KEYBOARD) {
+      let buffer = '';
+      let lastKeyPressTime = Date.now();
+      const timeout = 100; // Timeout in ms to determine end of scan
+
+      const handleKeyDown = (event) => {
+        // Prevent default behavior for Enter key in the input field
+        if (event.key === 'Enter' && event.target === inputRef.current) {
+          event.preventDefault();
+        }
+        
+        // This is a common way to handle scanner input, which is very fast
+        const now = Date.now();
+        if (now - lastKeyPressTime > timeout) {
+          // New scan sequence started
+          buffer = '';
+        }
+
+        if (event.key === 'Enter') {
+          if (buffer.length > 0) {
+            setScannedData(buffer);
+            setScanTime(((now - scanStartTime) / 1000).toFixed(2));
+          }
+          buffer = ''; // Reset buffer after processing
+        } else if (event.key.length === 1) { // Filter out special keys like 'Shift', 'Alt', etc.
+          buffer += event.key;
+        }
+        lastKeyPressTime = now;
+      };
+
+      window.addEventListener('keydown', handleKeyDown);
+
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+      };
+    }
+  }, [scannerType, scanStartTime]);
 
   const startScanning = () => {
     setScannedData("");
     setScanTime(null);
     setScanStartTime(Date.now());
     setScanning(true);
+    if (scannerType === SCANNER_TYPES.KEYBOARD && inputRef.current) {
+      inputRef.current.focus(); // Focus the hidden input to capture keystrokes
+    }
   };
 
   const cancelScanning = () => {
@@ -128,22 +181,43 @@ export default function Scanner() {
           </h1>
           <div className="flex w-full gap-3">
             <select
-              value={selectedDeviceId || ""}
-              onChange={(e) => setSelectedDeviceId(e.target.value)}
+              value={scannerType}
+              onChange={(e) => {
+                setScanning(false);
+                setScannerType(e.target.value);
+              }}
               className="flex-1 px-4 py-2 rounded-xl border-2 border-amber-300 bg-white text-gray-700 shadow-sm hover:shadow-md focus:ring-2 focus:ring-orange-400 outline-none"
-              disabled={scanning}
             >
-              {devices.length === 0 ? (
-                <option value="">No cameras detected</option>
-              ) : (
-                devices.map((d, i) => (
-                  <option key={d.deviceId || i} value={d.deviceId}>
-                    {d.label || `Camera ${i + 1}`}
-                  </option>
-                ))
-              )}
+              <option value={SCANNER_TYPES.KEYBOARD}>Keyboard Scanner</option>
+              <option value={SCANNER_TYPES.WEBCAM}>Webcam</option>
             </select>
+            {scannerType === SCANNER_TYPES.WEBCAM && (
+              <select
+                value={selectedDeviceId || ""}
+                onChange={(e) => setSelectedDeviceId(e.target.value)}
+                className="flex-1 px-4 py-2 rounded-xl border-2 border-amber-300 bg-white text-gray-700 shadow-sm hover:shadow-md focus:ring-2 focus:ring-orange-400 outline-none"
+                disabled={scanning}
+              >
+                {devices.length === 0 ? (
+                  <option value="">No cameras detected</option>
+                ) : (
+                  devices.map((d, i) => (
+                    <option key={d.deviceId || i} value={d.deviceId}>
+                      {d.label || `Camera ${i + 1}`}
+                    </option>
+                  ))
+                )}
+              </select>
+            )}
           </div>
+
+          {/* This hidden input is for the keyboard scanner to ensure focus for keydown events */}
+          <input
+            ref={inputRef}
+            type="text"
+            className="w-0 h-0 opacity-0 absolute"
+            autoFocus={scanning && scannerType === SCANNER_TYPES.KEYBOARD}
+          />
 
           {!scanning ? (
             <button
@@ -154,19 +228,25 @@ export default function Scanner() {
             </button>
           ) : (
             <div className="flex flex-col items-center space-y-4 w-full">
-              <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
-                <Webcam
-                  ref={webcamRef}
-                  audio={false}
-                  screenshotFormat="image/png"
-                  videoConstraints={{
-                    deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
-                  }}
-                  className="w-full h-full object-cover"
-                />
-                <canvas ref={canvasRef} className="hidden" />
-                <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
-              </div>
+              {scannerType === SCANNER_TYPES.WEBCAM ? (
+                <div className="relative w-full h-80 rounded-xl overflow-hidden shadow-2xl bg-gradient-to-br from-rose-100 to-orange-100">
+                  <Webcam
+                    ref={webcamRef}
+                    audio={false}
+                    screenshotFormat="image/png"
+                    videoConstraints={{
+                      deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+                    }}
+                    className="w-full h-full object-cover"
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                  <div className="absolute inset-0 rounded-xl ring-4 ring-orange-300/40 animate-pulse pointer-events-none"></div>
+                </div>
+              ) : (
+                <div className="w-full h-80 rounded-xl bg-gray-100 flex items-center justify-center shadow-inner text-gray-500 italic">
+                  Waiting for keyboard scanner input...
+                </div>
+              )}
               <button
                 onClick={cancelScanning}
                 className="px-6 py-2 rounded-xl bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800 font-semibold shadow-md hover:scale-105 transform transition"
