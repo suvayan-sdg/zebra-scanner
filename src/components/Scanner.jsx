@@ -24,6 +24,9 @@ export default function Scanner() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const inputRef = useRef(null);
+  
+  // ✅ The fix: Use a ref to persist the buffer
+  const bufferRef = useRef("");
 
   // ✅ Enumerate cameras for webcam mode
   const enumerateDevices = async () => {
@@ -85,32 +88,31 @@ export default function Scanner() {
   // ✅ Handle keyboard input (Zebra scanner logic)
   useEffect(() => {
     if (scannerType === SCANNER_TYPES.KEYBOARD) {
-      let buffer = '';
       const handleKeyDown = (event) => {
-        // Only trigger the scanner listener when the input field is not focused
-        if (document.activeElement === inputRef.current || event.key.length !== 1) {
-            return;
+        // Ignore key presses when the input field is active
+        if (document.activeElement === inputRef.current) {
+          return;
         }
 
-        // If a scan is not in progress, start one on the first keypress
-        if (!scanning && event.key !== 'Enter') {
-          setScannedData("");
-          setScanTime(null);
-          setScanning(true);
-          setScanStartTime(Date.now());
-        }
-
-        // Add character to buffer
-        if (event.key.length === 1) {
-          buffer += event.key;
-        }
-
-        // Check for scan completion
+        // Zebra scanners send data extremely fast.
+        // If the key is 'Enter', we process the buffered data.
         if (event.key === 'Enter') {
-          setScannedData(buffer);
-          setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
-          setScanning(false);
-          buffer = '';
+            if (bufferRef.current.length > 0) {
+              setScannedData(bufferRef.current);
+              setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
+              setScanning(false);
+              bufferRef.current = ""; // Reset buffer after scan
+            }
+        } else if (event.key.length === 1) {
+            // If scanning is not in progress, start it with the first keypress
+            if (!scanning) {
+              setScannedData("");
+              setScanTime(null);
+              setScanning(true);
+              setScanStartTime(Date.now());
+            }
+            // Append the character to the buffer
+            bufferRef.current += event.key;
         }
       };
 
@@ -137,7 +139,7 @@ export default function Scanner() {
 
   const isMatch = text && scannedData && text === scannedData;
 
-  const appVersion = "1.0.4";
+  const appVersion = "1.0.5";
   const fixedDate = "September 19, 2025";
 
   return (
