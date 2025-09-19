@@ -137,6 +137,9 @@ export default function Scanner() {
 
   const isMatch = text && scannedData && text === scannedData;
 
+  const appVersion = "1.0.4";
+  const fixedDate = "September 19, 2025";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-300 via-amber-200 to-rose-300 p-4 md:p-6">
       <motion.div
@@ -145,7 +148,7 @@ export default function Scanner() {
         animate={{ y: 0, opacity: 1 }}
       >
         <p className="md:col-span-2 text-center text-xs text-gray-400">
-          version 1.0.3
+          version {appVersion} | Date: {fixedDate}
         </p>
 
         {/* LEFT: QR Generator */}
