@@ -4,7 +4,7 @@ import Webcam from "react-webcam";
 import jsQR from "jsqr";
 import { motion } from "framer-motion";
 
-// Define scanner types for a clear switch
+// Define scanner types for clarity
 const SCANNER_TYPES = {
   WEBCAM: "webcam",
   KEYBOARD: "keyboard",
@@ -24,12 +24,12 @@ export default function Scanner() {
   const webcamRef = useRef(null);
   const canvasRef = useRef(null);
   const inputRef = useRef(null);
-  
-  // ✅ The fix: Use a ref to persist the buffer
+
+  // ✅ Buffer for keyboard scanner
   const bufferRef = useRef("");
 
-  // ✅ Enumerate cameras for webcam mode
-  const enumerateDevices = async () => {
+  // ✅ Enumerate cameras (wrapped in useCallback for cleanup safety)
+  const enumerateDevices = useCallback(async () => {
     try {
       const all = await navigator.mediaDevices.enumerateDevices();
       const videoInputs = all.filter((d) => d.kind === "videoinput");
@@ -40,18 +40,19 @@ export default function Scanner() {
     } catch (err) {
       console.error("Device enumeration failed:", err);
     }
-  };
+  }, [selectedDeviceId]);
 
   useEffect(() => {
     if (scannerType === SCANNER_TYPES.WEBCAM) {
       enumerateDevices();
       navigator.mediaDevices.addEventListener("devicechange", enumerateDevices);
-      return () =>
+      return () => {
         navigator.mediaDevices.removeEventListener("devicechange", enumerateDevices);
+      };
     }
-  }, [scannerType, selectedDeviceId]);
+  }, [scannerType, enumerateDevices]);
 
-  // ✅ Scan QR code from video frames (Webcam logic)
+  // ✅ Scan QR from video frames
   const captureFrame = useCallback(() => {
     if (!webcamRef.current || !canvasRef.current) return;
 
@@ -77,49 +78,48 @@ export default function Scanner() {
     }
   }, [scanStartTime]);
 
+  // ✅ Interval for webcam scanning
   useEffect(() => {
     let interval;
     if (scanning && scannerType === SCANNER_TYPES.WEBCAM) {
       interval = setInterval(captureFrame, 300);
     }
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [scanning, captureFrame, scannerType]);
 
-  // ✅ Handle keyboard input (Zebra scanner logic)
+  // ✅ Handle Zebra scanner (keyboard wedge)
   useEffect(() => {
     if (scannerType === SCANNER_TYPES.KEYBOARD) {
       const handleKeyDown = (event) => {
-        // Ignore key presses when the input field is active
-        if (document.activeElement === inputRef.current) {
-          return;
-        }
+        // Ignore typing in input field
+        if (document.activeElement === inputRef.current) return;
 
-        // Zebra scanners send data extremely fast.
-        // If the key is 'Enter', we process the buffered data.
-        if (event.key === 'Enter') {
-            if (bufferRef.current.length > 0) {
-              setScannedData(bufferRef.current);
+        if (event.key === "Enter") {
+          if (bufferRef.current.length > 0) {
+            setScannedData(bufferRef.current);
+            if (scanStartTime) {
               setScanTime(((Date.now() - scanStartTime) / 1000).toFixed(2));
-              setScanning(false);
-              bufferRef.current = ""; // Reset buffer after scan
             }
+            setScanning(false);
+            bufferRef.current = "";
+          }
         } else if (event.key.length === 1) {
-            // If scanning is not in progress, start it with the first keypress
-            if (!scanning) {
-              setScannedData("");
-              setScanTime(null);
-              setScanning(true);
-              setScanStartTime(Date.now());
-            }
-            // Append the character to the buffer
-            bufferRef.current += event.key;
+          if (!scanning) {
+            setScannedData("");
+            setScanTime(null);
+            const start = Date.now();
+            setScanStartTime(start);
+            setScanning(true);
+          }
+          bufferRef.current += event.key;
         }
       };
 
-      window.addEventListener('keydown', handleKeyDown);
-
+      window.addEventListener("keydown", handleKeyDown);
       return () => {
-        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener("keydown", handleKeyDown);
       };
     }
   }, [scannerType, scanning, scanStartTime]);
@@ -139,8 +139,8 @@ export default function Scanner() {
 
   const isMatch = text && scannedData && text === scannedData;
 
-  const appVersion = "1.0.5";
-  const fixedDate = "September 19, 2025";
+  const appVersion = "1.0.6";
+  const fixedDate = "September 24, 2025";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-300 via-amber-200 to-rose-300 p-4 md:p-6">
@@ -159,9 +159,10 @@ export default function Scanner() {
             Generate QR
           </h1>
           <input
-            ref={inputRef} // Used to check if the main input is focused
+            ref={inputRef}
             type="text"
             placeholder="Enter text to generate QR"
+            aria-label="Enter text to generate QR"
             value={text}
             onChange={(e) => setText(e.target.value)}
             className="w-full px-4 py-3 border-2 border-amber-300 rounded-xl focus:ring-4 focus:ring-orange-300 outline-none transition hover:shadow-md text-gray-700"
@@ -177,13 +178,14 @@ export default function Scanner() {
           )}
         </div>
 
-        {/* RIGHT: Scanner + Device Picker */}
+        {/* RIGHT: Scanner */}
         <div className="flex flex-col items-center space-y-4 w-full">
           <h1 className="text-2xl md:text-3xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-rose-600 to-orange-600">
             Scan QR
           </h1>
           <div className="flex w-full gap-3">
             <select
+              aria-label="Select scanner type"
               value={scannerType}
               onChange={(e) => {
                 setScanning(false);
@@ -196,6 +198,7 @@ export default function Scanner() {
             </select>
             {scannerType === SCANNER_TYPES.WEBCAM && (
               <select
+                aria-label="Select camera device"
                 value={selectedDeviceId || ""}
                 onChange={(e) => setSelectedDeviceId(e.target.value)}
                 className="flex-1 px-4 py-2 rounded-xl border-2 border-amber-300 bg-white text-gray-700 shadow-sm hover:shadow-md focus:ring-2 focus:ring-orange-400 outline-none"
@@ -230,7 +233,9 @@ export default function Scanner() {
                     audio={false}
                     screenshotFormat="image/png"
                     videoConstraints={{
-                      deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
+                      deviceId: selectedDeviceId
+                        ? { exact: selectedDeviceId }
+                        : undefined,
                     }}
                     className="w-full h-full object-cover"
                   />
